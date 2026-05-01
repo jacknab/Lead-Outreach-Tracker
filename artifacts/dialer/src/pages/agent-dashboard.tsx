@@ -322,14 +322,30 @@ export default function AgentDashboard() {
             </div>
           ) : (
             <div className="flex-1 overflow-auto p-3 space-y-3">
-              {/* Name */}
+              {/* Name + tier row */}
               <div>
                 <div className="text-[10px] text-slate-600 mb-0.5">NAME</div>
-                <div
-                  data-testid="lead-name"
-                  className="text-emerald-300 font-semibold text-[13px] leading-tight"
-                >
-                  {lead.firstName} {lead.lastName}
+                <div className="flex items-start gap-1.5 flex-wrap">
+                  <div
+                    data-testid="lead-name"
+                    className="text-emerald-300 font-semibold text-[13px] leading-tight"
+                  >
+                    {lead.firstName} {lead.lastName}
+                  </div>
+                  {lead.tier && (
+                    <span className={`text-[9px] px-1 border font-bold leading-tight mt-0.5 shrink-0 ${
+                      lead.tier === "Hot"  ? "border-red-400/60 text-red-400" :
+                      lead.tier === "Warm" ? "border-yellow-400/60 text-yellow-400" :
+                                             "border-slate-500/60 text-slate-500"
+                    }`}>
+                      {lead.tier.toUpperCase()}
+                    </span>
+                  )}
+                  {lead.leadScore != null && (
+                    <span className="text-[9px] border border-slate-600/60 text-slate-500 px-1 leading-tight mt-0.5 shrink-0">
+                      {lead.leadScore}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -346,22 +362,44 @@ export default function AgentDashboard() {
 
               <div className="border-t border-border pt-2 space-y-2">
                 {[
-                  { label: "EMAIL",    value: lead.email },
                   { label: "BUSINESS", value: lead.business },
-                  { label: "ADDRESS",  value: lead.address },
-                  {
-                    label: "LOCATION",
+                  { label: "LOCATION",
                     value: lead.city && lead.state
                       ? `${lead.city}, ${lead.state} ${lead.zip || ""}`.trim()
                       : null,
                   },
+                  { label: "WEBSITE",  value: lead.website },
                 ].map(({ label, value }) => (
                   <div key={label}>
                     <div className="text-[9px] text-slate-600">{label}</div>
-                    <div className="text-[11px] text-slate-300 leading-snug">{value || "—"}</div>
+                    <div className="text-[11px] text-slate-300 leading-snug truncate">{value || "—"}</div>
                   </div>
                 ))}
               </div>
+
+              {/* Signal tags */}
+              {lead.signalTags && (
+                <div className="border-t border-border pt-2">
+                  <div className="text-[9px] text-slate-600 mb-1">SIGNALS</div>
+                  <div className="flex flex-wrap gap-1">
+                    {lead.signalTags.split("|").map((tag) => {
+                      const t = tag.trim();
+                      const color =
+                        t === "no_website"  ? "border-orange-500/60 text-orange-400" :
+                        t === "no_reviews"  ? "border-yellow-500/60 text-yellow-400" :
+                        t === "no_booking"  ? "border-red-500/60 text-red-400"       :
+                        t === "booksy"      ? "border-cyan-500/60 text-cyan-400"      :
+                        t === "yelp"        ? "border-rose-500/60 text-rose-400"      :
+                                              "border-slate-600/60 text-slate-500";
+                      return (
+                        <span key={t} className={`text-[9px] px-1 border font-mono ${color}`}>
+                          {t.replace(/_/g, " ")}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="border-t border-border pt-2">
                 <div className="text-[9px] text-slate-600">STATUS</div>

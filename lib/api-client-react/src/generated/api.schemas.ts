@@ -81,6 +81,13 @@ export interface Lead {
   assignedAgentId?: number | null;
   campaignId?: number | null;
   callbackAt?: string | null;
+  website?: string | null;
+  leadScore?: number | null;
+  tier?: string | null;
+  signalTags?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
+  placeId?: string | null;
   createdAt: string;
 }
 

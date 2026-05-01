@@ -581,6 +581,27 @@ components:
           type: string
           format: date-time
           nullable: true
+        website:
+          type: string
+          nullable: true
+        leadScore:
+          type: integer
+          nullable: true
+        tier:
+          type: string
+          nullable: true
+        signalTags:
+          type: string
+          nullable: true
+        latitude:
+          type: string
+          nullable: true
+        longitude:
+          type: string
+          nullable: true
+        placeId:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time

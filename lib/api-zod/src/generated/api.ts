@@ -135,6 +135,13 @@ export const AssignNextLeadResponse = zod.object({
   assignedAgentId: zod.number().nullish(),
   campaignId: zod.number().nullish(),
   callbackAt: zod.coerce.date().nullish(),
+  website: zod.string().nullish(),
+  leadScore: zod.number().nullish(),
+  tier: zod.string().nullish(),
+  signalTags: zod.string().nullish(),
+  latitude: zod.string().nullish(),
+  longitude: zod.string().nullish(),
+  placeId: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
 
@@ -171,6 +178,13 @@ export const GetAgentCurrentLeadResponse = zod.object({
   assignedAgentId: zod.number().nullish(),
   campaignId: zod.number().nullish(),
   callbackAt: zod.coerce.date().nullish(),
+  website: zod.string().nullish(),
+  leadScore: zod.number().nullish(),
+  tier: zod.string().nullish(),
+  signalTags: zod.string().nullish(),
+  latitude: zod.string().nullish(),
+  longitude: zod.string().nullish(),
+  placeId: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
 
@@ -210,6 +224,13 @@ export const ListLeadsResponseItem = zod.object({
   assignedAgentId: zod.number().nullish(),
   campaignId: zod.number().nullish(),
   callbackAt: zod.coerce.date().nullish(),
+  website: zod.string().nullish(),
+  leadScore: zod.number().nullish(),
+  tier: zod.string().nullish(),
+  signalTags: zod.string().nullish(),
+  latitude: zod.string().nullish(),
+  longitude: zod.string().nullish(),
+  placeId: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
 export const ListLeadsResponse = zod.array(ListLeadsResponseItem);
@@ -263,6 +284,13 @@ export const GetLeadResponse = zod.object({
   assignedAgentId: zod.number().nullish(),
   campaignId: zod.number().nullish(),
   callbackAt: zod.coerce.date().nullish(),
+  website: zod.string().nullish(),
+  leadScore: zod.number().nullish(),
+  tier: zod.string().nullish(),
+  signalTags: zod.string().nullish(),
+  latitude: zod.string().nullish(),
+  longitude: zod.string().nullish(),
+  placeId: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
 
@@ -313,6 +341,13 @@ export const SetLeadDispositionResponse = zod.object({
   assignedAgentId: zod.number().nullish(),
   campaignId: zod.number().nullish(),
   callbackAt: zod.coerce.date().nullish(),
+  website: zod.string().nullish(),
+  leadScore: zod.number().nullish(),
+  tier: zod.string().nullish(),
+  signalTags: zod.string().nullish(),
+  latitude: zod.string().nullish(),
+  longitude: zod.string().nullish(),
+  placeId: zod.string().nullish(),
   createdAt: zod.coerce.date(),
 });
 
