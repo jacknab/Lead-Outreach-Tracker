@@ -8,6 +8,7 @@ import {
   useGetAgentCurrentLead,
   useGetLeadNotes,
   useGetLeadCallHistory,
+  useGetCampaign,
   useUpdateAgentState,
   useAssignNextLead,
   useCreateCall,
@@ -59,6 +60,10 @@ export default function AgentDashboard() {
 
   const { data: callHistory } = useGetLeadCallHistory(lead?.id || 0, {
     query: { enabled: !!lead?.id, queryKey: getGetLeadCallHistoryQueryKey(lead?.id || 0), refetchInterval: 5000 },
+  });
+
+  const { data: campaign } = useGetCampaign(lead?.campaignId || 0, {
+    query: { enabled: !!lead?.campaignId },
   });
 
   const updateAgentState = useUpdateAgentState();
@@ -397,6 +402,55 @@ export default function AgentDashboard() {
                 {fmt(callDuration)}
               </span>
             )}
+          </div>
+
+          {/* Script panels — READ TO CUSTOMER + AGENT GUIDE */}
+          <div className="flex border-b border-border shrink-0" style={{ height: 180 }}>
+
+            {/* READ TO CUSTOMER */}
+            <div className="flex flex-col border-r border-border" style={{ flex: 1 }}>
+              <div className="panel-header">
+                <span className="text-emerald-400">◄</span>
+                <span>READ TO CUSTOMER</span>
+                <span className="ml-auto text-[9px] px-1 border border-slate-600 text-slate-600">SCRIPT</span>
+              </div>
+              <div className="flex-1 overflow-auto p-2">
+                {!lead ? (
+                  <div className="text-slate-700 text-[10px] italic text-center pt-4">— no lead selected —</div>
+                ) : !campaign?.script ? (
+                  <div className="text-slate-600 text-[10px] italic">No read script for this campaign.</div>
+                ) : (
+                  <div className="text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap">
+                    {campaign.script
+                      .replace("[CUSTOMER NAME]", `${lead.firstName} ${lead.lastName}`)
+                      .replace("[BUSINESS NAME]", lead.business || "[BUSINESS]")
+                      .replace("[CITY]", lead.city || "[CITY]")
+                    }
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* AGENT GUIDE */}
+            <div className="flex flex-col" style={{ flex: 1 }}>
+              <div className="panel-header">
+                <span className="text-yellow-400">◄</span>
+                <span>AGENT GUIDE</span>
+                <span className="ml-auto text-[9px] px-1 border border-slate-600 text-slate-600">INTERNAL</span>
+              </div>
+              <div className="flex-1 overflow-auto p-2">
+                {!lead ? (
+                  <div className="text-slate-700 text-[10px] italic text-center pt-4">— no lead selected —</div>
+                ) : !campaign?.agentGuide ? (
+                  <div className="text-slate-600 text-[10px] italic">No guidance for this campaign.</div>
+                ) : (
+                  <div className="text-[11px] text-slate-400 leading-relaxed whitespace-pre-wrap">
+                    {campaign.agentGuide}
+                  </div>
+                )}
+              </div>
+            </div>
+
           </div>
 
           {/* Three-column bottom panels */}

@@ -1498,6 +1498,93 @@ export function useGetLeadCallHistory<
 }
 
 /**
+ * @summary Get campaign by ID
+ */
+export const getGetCampaignUrl = (id: number) => {
+  return `/api/campaigns/${id}`;
+};
+
+export const getCampaign = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Campaign> => {
+  return customFetch<Campaign>(getGetCampaignUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCampaignQueryKey = (id: number) => {
+  return [`/api/campaigns/${id}`] as const;
+};
+
+export const getGetCampaignQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCampaign>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaign>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCampaignQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCampaign>>> = ({
+    signal,
+  }) => getCampaign(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCampaign>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCampaignQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCampaign>>
+>;
+export type GetCampaignQueryError = ErrorType<void>;
+
+/**
+ * @summary Get campaign by ID
+ */
+
+export function useGetCampaign<
+  TData = Awaited<ReturnType<typeof getCampaign>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaign>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCampaignQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary List all campaigns
  */
 export const getListCampaignsUrl = () => {

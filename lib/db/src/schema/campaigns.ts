@@ -13,6 +13,8 @@ export const campaignsTable = pgTable("campaigns", {
   name: text("name").notNull(),
   description: text("description"),
   status: campaignStatusEnum("status").notNull().default("active"),
+  script: text("script"),
+  agentGuide: text("agent_guide"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

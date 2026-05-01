@@ -174,6 +174,8 @@ export interface Campaign {
   name: string;
   description?: string | null;
   status: CampaignStatus;
+  script?: string | null;
+  agentGuide?: string | null;
   totalLeads: number;
   contactedLeads: number;
   hotLeads: number;

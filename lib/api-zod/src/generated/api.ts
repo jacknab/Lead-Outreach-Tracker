@@ -439,6 +439,26 @@ export const GetLeadCallHistoryResponse = zod.array(
 );
 
 /**
+ * @summary Get campaign by ID
+ */
+export const GetCampaignParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetCampaignResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  status: zod.enum(["active", "paused", "completed"]),
+  script: zod.string().nullish(),
+  agentGuide: zod.string().nullish(),
+  totalLeads: zod.number(),
+  contactedLeads: zod.number(),
+  hotLeads: zod.number(),
+  createdAt: zod.coerce.date(),
+});
+
+/**
  * @summary List all campaigns
  */
 export const ListCampaignsResponseItem = zod.object({
@@ -446,6 +466,8 @@ export const ListCampaignsResponseItem = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
   status: zod.enum(["active", "paused", "completed"]),
+  script: zod.string().nullish(),
+  agentGuide: zod.string().nullish(),
   totalLeads: zod.number(),
   contactedLeads: zod.number(),
   hotLeads: zod.number(),

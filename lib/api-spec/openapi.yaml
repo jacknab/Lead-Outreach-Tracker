@@ -385,6 +385,27 @@ paths:
                 items:
                   $ref: "#/components/schemas/CallLog"
 
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      tags: [campaigns]
+      summary: Get campaign by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Campaign found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Not found
+
   /campaigns:
     get:
       operationId: listCampaigns
@@ -739,6 +760,12 @@ components:
         status:
           type: string
           enum: [active, paused, completed]
+        script:
+          type: string
+          nullable: true
+        agentGuide:
+          type: string
+          nullable: true
         totalLeads:
           type: integer
         contactedLeads:
