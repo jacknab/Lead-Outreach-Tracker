@@ -15,6 +15,7 @@ import {
   useUpdateCall,
   useSetLeadDisposition,
   useAddLeadNote,
+  useGetDashboardSummary,
   getGetAgentCurrentLeadQueryKey,
   getGetLeadNotesQueryKey,
   getGetLeadCallHistoryQueryKey,
@@ -64,6 +65,10 @@ export default function AgentDashboard() {
 
   const { data: campaign } = useGetCampaign(lead?.campaignId || 0, {
     query: { enabled: !!lead?.campaignId },
+  });
+
+  const { data: summary } = useGetDashboardSummary({
+    query: { refetchInterval: 10000 },
   });
 
   const updateAgentState = useUpdateAgentState();
@@ -257,7 +262,9 @@ export default function AgentDashboard() {
 
         <div className="flex items-center gap-1 border-r border-border px-3 h-full">
           <span className="text-slate-600 text-[10px]">QUEUED</span>
-          <span className="text-slate-300 text-[10px] font-bold">–</span>
+          <span className="text-slate-300 text-[10px] font-bold">
+            {summary?.pendingLeads != null ? summary.pendingLeads.toLocaleString() : "–"}
+          </span>
         </div>
 
         <div className="flex items-center gap-1 border-r border-border px-3 h-full">

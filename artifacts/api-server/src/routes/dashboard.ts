@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, agentsTable, leadsTable, callLogsTable } from "@workspace/db";
-import { count, eq, and, gte, avg, ne } from "drizzle-orm";
+import { count, eq, and, gte, avg, ne, sql, isNull } from "drizzle-orm";
 
 const router = Router();
 
@@ -24,12 +24,23 @@ router.get("/dashboard/summary", async (req, res) => {
     .from(leadsTable)
     .where(eq(leadsTable.status, "hot_lead"));
 
-  const [totalLeadsRow] = await db.select({ count: count() }).from(leadsTable);
+  const CAMPAIGN_ID = 4;
+  const [totalLeadsRow] = await db
+    .select({ count: count() })
+    .from(leadsTable)
+    .where(eq(leadsTable.campaignId, CAMPAIGN_ID));
 
   const [pendingLeadsRow] = await db
     .select({ count: count() })
     .from(leadsTable)
-    .where(and(eq(leadsTable.status, "new")));
+    .where(
+      and(
+        eq(leadsTable.status, "new"),
+        eq(leadsTable.campaignId, CAMPAIGN_ID),
+        isNull(leadsTable.assignedAgentId),
+        sql`TRIM(${leadsTable.phone}) != ''`
+      )
+    );
 
   const allCalls = await db
     .select({ duration: callLogsTable.duration })
