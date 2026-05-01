@@ -1,22 +1,30 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Outbound Call Campaign Agent State System API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: agents
+    description: Agent management and state
+  - name: leads
+    description: Lead management and assignment
+  - name: calls
+    description: Call logging and history
+  - name: campaigns
+    description: Campaign management
+  - name: dashboard
+    description: Dashboard summaries and stats
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +32,434 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /agents:
+    get:
+      operationId: listAgents
+      tags: [agents]
+      summary: List all agents
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+    post:
+      operationId: createAgent
+      tags: [agents]
+      summary: Create a new agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentBody"
+      responses:
+        "201":
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+
+  /agents/{id}:
+    get:
+      operationId: getAgent
+      tags: [agents]
+      summary: Get agent by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Agent found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          description: Not found
+
+  /agents/{id}/state:
+    patch:
+      operationId: updateAgentState
+      tags: [agents]
+      summary: Update agent state
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentStateBody"
+      responses:
+        "200":
+          description: State updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+
+  /agents/{id}/assign-lead:
+    post:
+      operationId: assignNextLead
+      tags: [agents]
+      summary: Assign the next available lead to an agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lead assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "204":
+          description: No leads available
+
+  /agents/{id}/current-lead:
+    get:
+      operationId: getAgentCurrentLead
+      tags: [agents]
+      summary: Get the currently assigned lead for an agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Current lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "204":
+          description: No lead assigned
+
+  /leads:
+    get:
+      operationId: listLeads
+      tags: [leads]
+      summary: List leads
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: campaignId
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of leads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+    post:
+      operationId: createLead
+      tags: [leads]
+      summary: Create a new lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLeadBody"
+      responses:
+        "201":
+          description: Lead created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+
+  /leads/{id}:
+    get:
+      operationId: getLead
+      tags: [leads]
+      summary: Get lead by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lead found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+
+  /leads/{id}/disposition:
+    patch:
+      operationId: setLeadDisposition
+      tags: [leads]
+      summary: Set disposition after call
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetDispositionBody"
+      responses:
+        "200":
+          description: Disposition set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+
+  /leads/{id}/notes:
+    get:
+      operationId: getLeadNotes
+      tags: [leads]
+      summary: Get notes for a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of notes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeadNote"
+    post:
+      operationId: addLeadNote
+      tags: [leads]
+      summary: Add a note to a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddLeadNoteBody"
+      responses:
+        "201":
+          description: Note added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadNote"
+
+  /calls:
+    get:
+      operationId: listCalls
+      tags: [calls]
+      summary: List call logs
+      parameters:
+        - name: agentId
+          in: query
+          schema:
+            type: integer
+        - name: leadId
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of calls
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CallLog"
+    post:
+      operationId: createCall
+      tags: [calls]
+      summary: Log a new call (initiate via AMI)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCallBody"
+      responses:
+        "201":
+          description: Call initiated and logged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallLog"
+
+  /calls/{id}:
+    patch:
+      operationId: updateCall
+      tags: [calls]
+      summary: Update call log (end time, duration, result)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCallBody"
+      responses:
+        "200":
+          description: Call updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallLog"
+
+  /calls/lead/{leadId}:
+    get:
+      operationId: getLeadCallHistory
+      tags: [calls]
+      summary: Get call history for a specific lead
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Call history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CallLog"
+
+  /campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [campaigns]
+      summary: List all campaigns
+      responses:
+        "200":
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create a campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCampaignBody"
+      responses:
+        "201":
+          description: Campaign created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary stats
+      responses:
+        "200":
+          description: Summary stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/agent-stats:
+    get:
+      operationId: getAgentStats
+      tags: [dashboard]
+      summary: Get per-agent performance stats
+      responses:
+        "200":
+          description: Agent stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentStats"
+
+  /dashboard/lead-funnel:
+    get:
+      operationId: getLeadFunnel
+      tags: [dashboard]
+      summary: Get lead disposition funnel breakdown
+      responses:
+        "200":
+          description: Funnel data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FunnelItem"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +470,371 @@ components:
       required:
         - status
 
+    Agent:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        extension:
+          type: string
+        status:
+          type: string
+          enum: [idle, ringing, on_call, wrap_up, paused, offline]
+        currentLeadId:
+          type: integer
+          nullable: true
+        callsToday:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - extension
+        - status
+        - callsToday
+        - createdAt
+
+    CreateAgentBody:
+      type: object
+      properties:
+        name:
+          type: string
+        extension:
+          type: string
+      required:
+        - name
+        - extension
+
+    UpdateAgentStateBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [idle, ringing, on_call, wrap_up, paused, offline]
+      required:
+        - status
+
+    Lead:
+      type: object
+      properties:
+        id:
+          type: integer
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          nullable: true
+        business:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [new, assigned, ringing, answered, no_answer, busy, hot_lead, callback, closed, not_interested]
+        assignedAgentId:
+          type: integer
+          nullable: true
+        campaignId:
+          type: integer
+          nullable: true
+        callbackAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - firstName
+        - lastName
+        - phone
+        - status
+        - createdAt
+
+    CreateLeadBody:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        business:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zip:
+          type: string
+        campaignId:
+          type: integer
+      required:
+        - firstName
+        - lastName
+        - phone
+
+    SetDispositionBody:
+      type: object
+      properties:
+        disposition:
+          type: string
+          enum: [no_answer, busy, hot_lead, callback, not_interested, closed]
+        notes:
+          type: string
+        callbackAt:
+          type: string
+          format: date-time
+        agentId:
+          type: integer
+      required:
+        - disposition
+        - agentId
+
+    LeadNote:
+      type: object
+      properties:
+        id:
+          type: integer
+        leadId:
+          type: integer
+        agentId:
+          type: integer
+          nullable: true
+        agentName:
+          type: string
+          nullable: true
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - leadId
+        - content
+        - createdAt
+
+    AddLeadNoteBody:
+      type: object
+      properties:
+        content:
+          type: string
+        agentId:
+          type: integer
+      required:
+        - content
+
+    CallLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        agentId:
+          type: integer
+        agentName:
+          type: string
+          nullable: true
+        leadId:
+          type: integer
+        leadName:
+          type: string
+          nullable: true
+        phoneNumber:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+          nullable: true
+        duration:
+          type: integer
+          nullable: true
+        result:
+          type: string
+          nullable: true
+        dispositionNotes:
+          type: string
+          nullable: true
+        amiChannel:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - agentId
+        - leadId
+        - phoneNumber
+        - startTime
+        - createdAt
+
+    CreateCallBody:
+      type: object
+      properties:
+        agentId:
+          type: integer
+        leadId:
+          type: integer
+        phoneNumber:
+          type: string
+      required:
+        - agentId
+        - leadId
+        - phoneNumber
+
+    UpdateCallBody:
+      type: object
+      properties:
+        endTime:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+        result:
+          type: string
+        dispositionNotes:
+          type: string
+        amiChannel:
+          type: string
+
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, paused, completed]
+        totalLeads:
+          type: integer
+        contactedLeads:
+          type: integer
+        hotLeads:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - status
+        - totalLeads
+        - contactedLeads
+        - hotLeads
+        - createdAt
+
+    CreateCampaignBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+      required:
+        - name
+
+    DashboardSummary:
+      type: object
+      properties:
+        activeAgents:
+          type: integer
+        totalAgents:
+          type: integer
+        callsToday:
+          type: integer
+        hotLeadsToday:
+          type: integer
+        totalLeads:
+          type: integer
+        pendingLeads:
+          type: integer
+        avgCallDuration:
+          type: integer
+        conversionRate:
+          type: number
+      required:
+        - activeAgents
+        - totalAgents
+        - callsToday
+        - hotLeadsToday
+        - totalLeads
+        - pendingLeads
+        - avgCallDuration
+        - conversionRate
+
+    AgentStats:
+      type: object
+      properties:
+        agentId:
+          type: integer
+        agentName:
+          type: string
+        extension:
+          type: string
+        status:
+          type: string
+        callsToday:
+          type: integer
+        hotLeads:
+          type: integer
+        avgDuration:
+          type: integer
+        conversionRate:
+          type: number
+      required:
+        - agentId
+        - agentName
+        - extension
+        - status
+        - callsToday
+        - hotLeads
+        - avgDuration
+        - conversionRate
+
+    FunnelItem:
+      type: object
+      properties:
+        label:
+          type: string
+        count:
+          type: integer
+        percentage:
+          type: number
+      required:
+        - label
+        - count
+        - percentage

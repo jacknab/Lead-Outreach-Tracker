@@ -1,0 +1,163 @@
+Build a full-stack “Outbound Call Campaign + Agent State System” that integrates with Asterisk/FreePBX using AMI (Asterisk Manager Interface).
+
+🎯 Core Goal
+
+Create a web-based preview dialer system where:
+
+Leads are automatically assigned from the database to agents
+Agents do NOT manually pick leads
+Each agent always sees the “next available lead”
+Agent clicks “Call Now” to initiate call via Asterisk
+
+No robo dialing or auto calling — all calls are manually triggered by agents.
+
+🧠 SYSTEM OVERVIEW
+1. Lead Distribution Engine (IMPORTANT)
+Leads are stored in database
+System automatically assigns next available lead to each agent
+Assignment rules:
+Only one active lead per agent at a time
+Lead must be “new” or “callback due”
+Once assigned, lead is locked to agent until disposition is set
+2. Agent Workflow (MAIN UI)
+
+When agent logs in:
+
+System automatically loads next available lead
+Display lead info:
+name
+phone number
+address
+notes
+
+Agent actions:
+
+Click “CALL NOW”
+After call ends:
+select disposition:
+no answer
+busy
+hot lead
+callback
+not interested
+Submit disposition → system assigns next lead automatically
+3. Call Control (Asterisk AMI Integration)
+
+When agent clicks “CALL NOW”:
+
+Use AMI Originate to initiate call
+
+Flow:
+
+Call agent SIP extension first
+Then dial customer number
+Bridge both legs
+
+Log AMI events for call state tracking.
+
+4. State System (REAL-TIME CORE)
+
+Track in database:
+
+Agent states:
+idle
+ringing
+on_call
+wrap_up
+paused
+Lead states:
+new
+assigned
+ringing
+answered
+no_answer
+busy
+hot_lead
+callback
+closed
+5. Automatic Lead Assignment Logic
+
+Backend must:
+
+detect agent becomes idle or wrap-up complete
+immediately assign next available lead
+lock lead to that agent
+prevent duplicate assignment across agents
+6. Call Logging System
+
+Store every call:
+
+agent_id
+lead_id
+phone_number
+start_time
+end_time
+duration
+result
+disposition notes
+7. Manager Dashboard
+
+Managers can:
+
+view live agent status
+see active calls
+monitor lead flow
+export reports
+see conversion stats per agent
+🔌 Asterisk Integration (MANDATORY)
+
+Use AMI (port 5038):
+
+Must support:
+
+Originate calls
+Hangup events
+Dial status events
+Call completion tracking
+
+Log all AMI responses for debugging.
+
+⚠️ CRITICAL CONSTRAINTS
+NO robo dialing
+NO predictive dialing
+NO auto outbound calls without agent click
+ALL calls must be initiated manually by agent clicking “Call Now”
+🎨 UI REQUIREMENTS
+
+Agent dashboard layout:
+
+Center: current lead card (auto-loaded)
+Button: CALL NOW
+Disposition dropdown after call
+Live call status indicator
+Auto refresh next lead after disposition
+
+Manager dashboard:
+
+agent table (live status)
+campaign progress
+call logs
+🧱 TECH STACK
+Backend: Node.js (Express)
+Frontend: React (or Next.js)
+Database: PostgreSQL (or SQLite for MVP)
+Real-time: WebSockets
+Telephony: Asterisk AMI
+🚀 MVP OUTPUT
+
+Must include:
+
+working lead auto-assignment system
+agent dashboard with auto-fed leads
+click-to-call via AMI
+call logging
+basic manager dashboard
+💡 My opinion (important)
+
+Toby, this version is much closer to a real outbound system.
+
+The key improvement you made is:
+
+removing manual lead selection and replacing it with controlled lead flow
+
+That’s how real dialer CRMs actually work.
