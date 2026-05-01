@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, pgEnum, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -30,6 +30,13 @@ export const leadsTable = pgTable("leads", {
   assignedAgentId: integer("assigned_agent_id"),
   campaignId: integer("campaign_id"),
   callbackAt: timestamp("callback_at"),
+  website: text("website"),
+  leadScore: integer("lead_score"),
+  tier: text("tier"),
+  signalTags: text("signal_tags"),
+  latitude: numeric("latitude"),
+  longitude: numeric("longitude"),
+  placeId: text("place_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

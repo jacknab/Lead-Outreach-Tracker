@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, leadsTable, leadNotesTable, agentsTable } from "@workspace/db";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { CreateLeadBody, SetLeadDispositionBody, AddLeadNoteBody } from "@workspace/api-zod";
 
 const router = Router();
@@ -23,16 +23,15 @@ function formatLead(lead: typeof leadsTable.$inferSelect) {
 
 router.get("/leads", async (req, res) => {
   let query = db.select().from(leadsTable).$dynamic();
-  const conditions = [];
+  // Always require a non-empty phone number — can't dial without one
+  const conditions = [sql`TRIM(${leadsTable.phone}) != ''`];
   if (req.query.status) {
     conditions.push(eq(leadsTable.status, req.query.status as string));
   }
   if (req.query.campaignId) {
     conditions.push(eq(leadsTable.campaignId, parseInt(req.query.campaignId as string)));
   }
-  if (conditions.length > 0) {
-    query = query.where(and(...conditions));
-  }
+  query = query.where(and(...conditions));
   const leads = await query.orderBy(desc(leadsTable.createdAt)).limit(
     req.query.limit ? parseInt(req.query.limit as string) : 50
   );

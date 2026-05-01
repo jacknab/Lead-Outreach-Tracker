@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "import-nail-leads": "tsx ./src/import-nail-leads.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",

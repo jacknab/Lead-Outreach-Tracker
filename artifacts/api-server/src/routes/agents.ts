@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, agentsTable, leadsTable } from "@workspace/db";
-import { eq, and, or, isNull, lte } from "drizzle-orm";
+import { eq, and, or, isNull, lte, ne, sql } from "drizzle-orm";
 import {
   CreateAgentBody,
   UpdateAgentStateBody,
@@ -62,6 +62,7 @@ router.post("/agents/:id/assign-lead", async (req, res) => {
 
   const now = new Date();
 
+  const CAMPAIGN_ID = 4; // Nail Salon Outbound 2026
   const [lead] = await db
     .select()
     .from(leadsTable)
@@ -74,9 +75,12 @@ router.post("/agents/:id/assign-lead", async (req, res) => {
             lte(leadsTable.callbackAt, now)
           )
         ),
-        isNull(leadsTable.assignedAgentId)
+        isNull(leadsTable.assignedAgentId),
+        eq(leadsTable.campaignId, CAMPAIGN_ID),
+        sql`TRIM(${leadsTable.phone}) != ''`
       )
     )
+    .orderBy(sql`lead_score DESC NULLS LAST`)
     .limit(1);
 
   if (!lead) {
