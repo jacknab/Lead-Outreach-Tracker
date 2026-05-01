@@ -349,7 +349,7 @@ export default function AgentDashboard() {
                     </span>
                   )}
                   {lead.leadScore != null && (
-                    <span className="text-[9px] border border-slate-600/60 text-slate-500 px-1 leading-tight mt-0.5 shrink-0">
+                    <span className="text-[9px] border border-slate-400/60 text-white font-bold px-1 leading-tight mt-0.5 shrink-0">
                       {lead.leadScore}
                     </span>
                   )}
@@ -375,38 +375,55 @@ export default function AgentDashboard() {
                       ? `${lead.city}, ${lead.state} ${lead.zip || ""}`.trim()
                       : null,
                   },
-                  { label: "WEBSITE",  value: lead.website },
                 ].map(({ label, value }) => (
                   <div key={label}>
                     <div className="text-[9px] text-slate-600">{label}</div>
-                    <div className="text-[11px] text-slate-300 leading-snug truncate">{value || "—"}</div>
+                    <div className="text-[11px] text-slate-300 leading-snug">{value || "—"}</div>
                   </div>
                 ))}
-              </div>
-
-              {/* Signal tags */}
-              {lead.signalTags && (
-                <div className="border-t border-border pt-2">
-                  <div className="text-[9px] text-slate-600 mb-1">SIGNALS</div>
-                  <div className="flex flex-wrap gap-1">
-                    {lead.signalTags.split("|").map((tag) => {
-                      const t = tag.trim();
-                      const color =
-                        t === "no_website"  ? "border-orange-500/60 text-orange-400" :
-                        t === "no_reviews"  ? "border-yellow-500/60 text-yellow-400" :
-                        t === "no_booking"  ? "border-red-500/60 text-red-400"       :
-                        t === "booksy"      ? "border-cyan-500/60 text-cyan-400"      :
-                        t === "yelp"        ? "border-rose-500/60 text-rose-400"      :
-                                              "border-slate-600/60 text-slate-500";
-                      return (
-                        <span key={t} className={`text-[9px] px-1 border font-mono ${color}`}>
-                          {t.replace(/_/g, " ")}
-                        </span>
-                      );
-                    })}
+                {/* Website — word-wrap so full URL is visible */}
+                <div>
+                  <div className="text-[9px] text-slate-600">WEBSITE</div>
+                  <div className="text-[11px] text-slate-300 leading-snug break-all whitespace-normal">
+                    {lead.website || "—"}
                   </div>
                 </div>
-              )}
+              </div>
+
+              {/* Signal tags — all shown in grey, active ones in yellow */}
+              {(() => {
+                const ALL_TAGS = [
+                  "no_website", "no_reviews", "few_reviews", "light_reviews",
+                  "established", "popular", "very_popular",
+                  "booksy", "square", "glossgenius", "vagaro",
+                  "booking_system_detected", "go_checkin_detected",
+                ];
+                const active = new Set(
+                  (lead.signalTags || "").split("|").map(t => t.trim()).filter(Boolean)
+                );
+                return (
+                  <div className="border-t border-border pt-2">
+                    <div className="text-[9px] text-slate-600 mb-1">SIGNALS</div>
+                    <div className="flex flex-wrap gap-1">
+                      {ALL_TAGS.map((tag) => {
+                        const on = active.has(tag);
+                        return (
+                          <span
+                            key={tag}
+                            className={`text-[9px] px-1 border font-mono transition-colors ${
+                              on
+                                ? "border-yellow-400/70 text-yellow-300 font-bold"
+                                : "border-slate-700/60 text-slate-700"
+                            }`}
+                          >
+                            {tag.replace(/_/g, " ")}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="border-t border-border pt-2">
                 <div className="text-[9px] text-slate-600">STATUS</div>
