@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, callLogsTable, agentsTable, leadsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { CreateCallBody, UpdateCallBody } from "@workspace/api-zod";
+import { amiOriginate } from "../ami";
 
 const router = Router();
 
@@ -68,17 +69,39 @@ router.post("/calls", async (req, res) => {
   }
   const { agentId, leadId, phoneNumber } = parsed.data;
 
+  const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId));
+  const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId));
+
+  if (!agent) {
+    res.status(404).json({ error: "Agent not found" });
+    return;
+  }
+
   const [call] = await db
     .insert(callLogsTable)
     .values({ agentId, leadId, phoneNumber })
     .returning();
 
   await db.update(agentsTable).set({ status: "ringing" }).where(eq(agentsTable.id, agentId));
-
   await db.update(leadsTable).set({ status: "ringing" }).where(eq(leadsTable.id, leadId));
 
-  const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId));
-  const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId));
+  amiOriginate({
+    extension: agent.extension,
+    phoneNumber,
+    actionId: `call-${call.id}`,
+  }).then(async (result) => {
+    req.log?.info({ callId: call.id, amiResult: result }, "AMI originate result");
+    if (result.success) {
+      await db
+        .update(callLogsTable)
+        .set({ amiChannel: `PJSIP/${agent.extension}` })
+        .where(eq(callLogsTable.id, call.id));
+    } else {
+      req.log?.warn({ callId: call.id, message: result.message }, "AMI originate failed");
+    }
+  }).catch((err) => {
+    req.log?.error({ err }, "AMI originate threw");
+  });
 
   res.status(201).json(
     formatCall({
