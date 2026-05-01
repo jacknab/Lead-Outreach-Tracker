@@ -1,14 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { 
-  Phone, User, Building2, MapPin, Mail, Hash, PhoneCall, 
-  PhoneOff, Save, KeyRound, Clock, Activity, AlertCircle, ArrowRight
-} from "lucide-react";
 
 import {
   useGetAgent,
@@ -21,606 +14,679 @@ import {
   useUpdateCall,
   useSetLeadDisposition,
   useAddLeadNote,
-  getGetAgentQueryKey,
   getGetAgentCurrentLeadQueryKey,
   getGetLeadNotesQueryKey,
-  getGetLeadCallHistoryQueryKey
+  getGetLeadCallHistoryQueryKey,
+  getGetAgentQueryKey,
 } from "@workspace/api-client-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useToast } from "@/hooks/use-toast";
+const AGENT_ID = 1;
 
-const AGENT_ID = 1; // Hardcoded for demo
+type Disposition = "no_answer" | "busy" | "hot_lead" | "callback" | "not_interested";
 
-const noteSchema = z.object({
-  content: z.string().min(1, "Note cannot be empty")
-});
+const DISPOSITIONS: { key: string; code: Disposition; label: string; color: string }[] = [
+  { key: "1", code: "no_answer",    label: "No Answer",    color: "text-slate-400" },
+  { key: "2", code: "busy",         label: "Busy",         color: "text-yellow-400" },
+  { key: "3", code: "hot_lead",     label: "Hot Lead",     color: "text-emerald-400" },
+  { key: "4", code: "callback",     label: "Callback",     color: "text-blue-400" },
+  { key: "5", code: "not_interested", label: "Not Interested", color: "text-red-400" },
+];
 
-const dispositionSchema = z.object({
-  disposition: z.enum(["no_answer", "busy", "hot_lead", "callback", "not_interested", "closed"], {
-    required_error: "Select a disposition"
-  }),
-  notes: z.string().optional(),
-});
+function useTime() {
+  const [time, setTime] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return time;
+}
 
 export default function AgentDashboard() {
-  const { toast } = useToast();
   const queryClient = useQueryClient();
-  
-  // Queries
-  const { data: agent, isLoading: isLoadingAgent } = useGetAgent(AGENT_ID, {
-    query: { refetchInterval: 3000 }
+  const time = useTime();
+
+  const { data: agent } = useGetAgent(AGENT_ID, {
+    query: { refetchInterval: 2000, queryKey: getGetAgentQueryKey(AGENT_ID) },
   });
 
-  const { data: lead, isLoading: isLoadingLead } = useGetAgentCurrentLead(AGENT_ID, {
-    query: { refetchInterval: 3000 }
+  const { data: lead } = useGetAgentCurrentLead(AGENT_ID, {
+    query: { refetchInterval: 2000, queryKey: getGetAgentCurrentLeadQueryKey(AGENT_ID) },
   });
 
-  const { data: notes, isLoading: isLoadingNotes } = useGetLeadNotes(lead?.id || 0, {
-    query: { 
-      enabled: !!lead?.id,
-      queryKey: getGetLeadNotesQueryKey(lead?.id || 0)
-    }
+  const { data: notes } = useGetLeadNotes(lead?.id || 0, {
+    query: { enabled: !!lead?.id, queryKey: getGetLeadNotesQueryKey(lead?.id || 0), refetchInterval: 5000 },
   });
 
-  const { data: callHistory, isLoading: isLoadingHistory } = useGetLeadCallHistory(lead?.id || 0, {
-    query: {
-      enabled: !!lead?.id,
-      queryKey: getGetLeadCallHistoryQueryKey(lead?.id || 0)
-    }
+  const { data: callHistory } = useGetLeadCallHistory(lead?.id || 0, {
+    query: { enabled: !!lead?.id, queryKey: getGetLeadCallHistoryQueryKey(lead?.id || 0), refetchInterval: 5000 },
   });
 
-  // Mutations
   const updateAgentState = useUpdateAgentState();
-  const assignNextLead = useAssignNextLead();
-  const createCall = useCreateCall();
-  const updateCall = useUpdateCall();
-  const setDisposition = useSetLeadDisposition();
-  const addNote = useAddLeadNote();
+  const assignNextLead  = useAssignNextLead();
+  const createCall      = useCreateCall();
+  const updateCall      = useUpdateCall();
+  const setDisposition  = useSetLeadDisposition();
+  const addNote         = useAddLeadNote();
 
-  // Local State
-  const [activeCallId, setActiveCallId] = useState<number | null>(null);
-  const [callDuration, setCallDuration] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [activeCallId, setActiveCallId]   = useState<number | null>(null);
+  const [callDuration, setCallDuration]   = useState(0);
+  const [noteText, setNoteText]           = useState("");
+  const [statusMsg, setStatusMsg]         = useState("READY");
+  const [selectedDisp, setSelectedDisp]   = useState<Disposition | null>(null);
+  const [noteInputFocused, setNoteInputFocused] = useState(false);
 
-  // Forms
-  const noteForm = useForm<z.infer<typeof noteSchema>>({
-    resolver: zodResolver(noteSchema),
-    defaultValues: { content: "" }
-  });
+  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const noteRef   = useRef<HTMLTextAreaElement>(null);
 
-  const dispositionForm = useForm<z.infer<typeof dispositionSchema>>({
-    resolver: zodResolver(dispositionSchema),
-    defaultValues: { notes: "" }
-  });
-
-  // Call Timer Effect
+  /* ── call timer ── */
   useEffect(() => {
-    if (agent?.status === "on_call" && !timerRef.current) {
-      timerRef.current = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
-    } else if (agent?.status !== "on_call" && timerRef.current) {
+    const isOnCall = agent?.status === "on_call";
+    if (isOnCall && !timerRef.current) {
+      timerRef.current = setInterval(() => setCallDuration(d => d + 1), 1000);
+    } else if (!isOnCall && timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [agent?.status]);
 
-  const formatDuration = (seconds: number) => {
-    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
+  const fmt = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
-  const handleCall = async () => {
-    if (!lead || !agent) return;
-    
-    try {
-      updateAgentState.mutate({ id: AGENT_ID, data: { status: "ringing" } });
-      
-      const call = await createCall.mutateAsync({
-        data: {
-          agentId: AGENT_ID,
-          leadId: lead.id,
-          phoneNumber: lead.phone
-        }
-      });
-      
-      setActiveCallId(call.id);
-      
-      // Simulate ringing -> answered after a short delay
-      setTimeout(() => {
-        updateAgentState.mutate({ id: AGENT_ID, data: { status: "on_call" } });
-      }, 1500);
-      
-    } catch (error) {
-      toast({ title: "Call failed to initiate", variant: "destructive" });
+  /* ── actions ── */
+  const doCall = useCallback(async () => {
+    if (!lead || !agent || agent.status !== "idle") return;
+    setStatusMsg("INITIATING CALL...");
+    updateAgentState.mutate({ id: AGENT_ID, data: { status: "ringing" } });
+    const call = await createCall.mutateAsync({ data: { agentId: AGENT_ID, leadId: lead.id, phoneNumber: lead.phone } });
+    setActiveCallId(call.id);
+    setTimeout(() => {
+      updateAgentState.mutate({ id: AGENT_ID, data: { status: "on_call" } });
+      setStatusMsg("ON CALL");
+    }, 1500);
+  }, [lead, agent, updateAgentState, createCall]);
+
+  const doHangup = useCallback(async () => {
+    if (!activeCallId || agent?.status !== "on_call") return;
+    setStatusMsg("ENDING CALL...");
+    await updateCall.mutateAsync({ id: activeCallId, data: { duration: callDuration } });
+    updateAgentState.mutate({ id: AGENT_ID, data: { status: "wrap_up" } });
+    setCallDuration(0);
+    setStatusMsg("SELECT DISPOSITION");
+  }, [activeCallId, agent, callDuration, updateCall, updateAgentState]);
+
+  const doDisposition = useCallback(async (disp: Disposition) => {
+    if (!lead || agent?.status !== "wrap_up") return;
+    setStatusMsg(`LOGGING: ${disp.toUpperCase()}...`);
+    await setDisposition.mutateAsync({ id: lead.id, data: { disposition: disp, agentId: AGENT_ID } });
+    if (activeCallId) {
+      await updateCall.mutateAsync({ id: activeCallId, data: { result: disp } });
+    }
+    setActiveCallId(null);
+    setSelectedDisp(null);
+    setStatusMsg("LOADING NEXT LEAD...");
+    await assignNextLead.mutateAsync({ id: AGENT_ID });
+    queryClient.invalidateQueries({ queryKey: getGetAgentCurrentLeadQueryKey(AGENT_ID) });
+    setStatusMsg("READY");
+  }, [lead, agent, activeCallId, setDisposition, updateCall, assignNextLead, queryClient]);
+
+  const doPause = useCallback(() => {
+    if (!agent) return;
+    if (agent.status === "paused") {
       updateAgentState.mutate({ id: AGENT_ID, data: { status: "idle" } });
+      setStatusMsg("RESUMED");
+    } else if (agent.status === "idle") {
+      updateAgentState.mutate({ id: AGENT_ID, data: { status: "paused" } });
+      setStatusMsg("PAUSED");
     }
-  };
+  }, [agent, updateAgentState]);
 
-  const handleHangup = async () => {
-    if (!activeCallId) return;
-    
-    try {
-      await updateCall.mutateAsync({
-        id: activeCallId,
-        data: { duration: callDuration }
-      });
-      
-      updateAgentState.mutate({ id: AGENT_ID, data: { status: "wrap_up" } });
-      setActiveCallId(null);
-      setCallDuration(0);
-    } catch (error) {
-      toast({ title: "Error hanging up", variant: "destructive" });
-    }
-  };
+  const doNextLead = useCallback(async () => {
+    setStatusMsg("REQUESTING NEXT LEAD...");
+    await assignNextLead.mutateAsync({ id: AGENT_ID });
+    queryClient.invalidateQueries({ queryKey: getGetAgentCurrentLeadQueryKey(AGENT_ID) });
+    setStatusMsg("READY");
+  }, [assignNextLead, queryClient]);
 
-  const onSubmitDisposition = async (data: z.infer<typeof dispositionSchema>) => {
-    if (!lead) return;
-    
-    try {
-      await setDisposition.mutateAsync({
-        id: lead.id,
-        data: {
-          disposition: data.disposition,
-          notes: data.notes,
-          agentId: AGENT_ID
+  const doSaveNote = useCallback(async () => {
+    if (!lead || !noteText.trim()) return;
+    await addNote.mutateAsync({ id: lead.id, data: { content: noteText.trim(), agentId: AGENT_ID } });
+    setNoteText("");
+    queryClient.invalidateQueries({ queryKey: getGetLeadNotesQueryKey(lead.id) });
+    setStatusMsg("NOTE SAVED");
+    setTimeout(() => setStatusMsg("READY"), 1500);
+  }, [lead, noteText, addNote, queryClient]);
+
+  /* ── global keyboard handler ── */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (noteInputFocused) {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          doSaveNote();
         }
-      });
-      
-      if (activeCallId) {
-        await updateCall.mutateAsync({
-          id: activeCallId,
-          data: { result: data.disposition, dispositionNotes: data.notes }
-        });
+        if (e.key === "Escape") {
+          noteRef.current?.blur();
+          setNoteInputFocused(false);
+        }
+        return;
       }
 
-      await assignNextLead.mutateAsync({ id: AGENT_ID });
-      
-      dispositionForm.reset();
-      toast({ title: "Disposition saved", description: "Loading next lead..." });
-      
-      queryClient.invalidateQueries({ queryKey: getGetAgentCurrentLeadQueryKey(AGENT_ID) });
-      
-    } catch (error) {
-      toast({ title: "Error saving disposition", variant: "destructive" });
-    }
+      const k = e.key.toUpperCase();
+
+      if (k === "C" && agent?.status === "idle" && lead)       { e.preventDefault(); doCall(); }
+      if (k === "H" && agent?.status === "on_call")            { e.preventDefault(); doHangup(); }
+      if (k === "W" && agent?.status === "on_call")            { e.preventDefault(); doHangup(); }
+      if (k === "P")                                           { e.preventDefault(); doPause(); }
+      if (k === "N" && agent?.status === "idle")               { e.preventDefault(); doNextLead(); }
+
+      if (agent?.status === "wrap_up") {
+        const d = DISPOSITIONS.find(d => d.key === e.key);
+        if (d) { e.preventDefault(); setSelectedDisp(d.code); doDisposition(d.code); }
+      }
+
+      if (k === "T") {
+        window.location.href = "/manager";
+      }
+
+      if (e.key === "/" && lead) {
+        e.preventDefault();
+        noteRef.current?.focus();
+        setNoteInputFocused(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [agent, lead, noteInputFocused, doCall, doHangup, doPause, doNextLead, doDisposition, doSaveNote]);
+
+  /* ── derived state ── */
+  const status = agent?.status || "offline";
+
+  const statusColor: Record<string, string> = {
+    idle:    "text-emerald-400",
+    ringing: "text-yellow-400",
+    on_call: "text-blue-400",
+    wrap_up: "text-purple-400",
+    paused:  "text-orange-400",
+    offline: "text-slate-500",
   };
 
-  const onSubmitNote = async (data: z.infer<typeof noteSchema>) => {
-    if (!lead) return;
-    
-    try {
-      await addNote.mutateAsync({
-        id: lead.id,
-        data: { content: data.content, agentId: AGENT_ID }
-      });
-      
-      noteForm.reset();
-      queryClient.invalidateQueries({ queryKey: getGetLeadNotesQueryKey(lead.id) });
-      toast({ title: "Note added" });
-    } catch (error) {
-      toast({ title: "Error adding note", variant: "destructive" });
-    }
+  const statusBg: Record<string, string> = {
+    idle:    "bg-emerald-400",
+    ringing: "bg-yellow-400",
+    on_call: "bg-blue-400",
+    wrap_up: "bg-purple-400",
+    paused:  "bg-orange-400",
+    offline: "bg-slate-500",
   };
 
-  const isCallActive = agent?.status === "on_call" || agent?.status === "ringing";
-  const needsDisposition = agent?.status === "wrap_up";
+  const callStateLabel: Record<string, string> = {
+    idle:    "READY",
+    ringing: "RINGING...",
+    on_call: "LIVE CALL",
+    wrap_up: "WRAP-UP",
+    paused:  "PAUSED",
+    offline: "OFFLINE",
+  };
 
   return (
-    <div className="min-h-screen bg-[#0f111a] text-slate-300 font-sans flex flex-col selection:bg-blue-500/30">
-      {/* Header StatusBar */}
-      <header className="h-14 bg-[#151822] border-b border-slate-800 flex items-center justify-between px-4 shrink-0">
-        <div className="flex items-center gap-6">
-          <div className="font-mono font-bold text-xl tracking-tight text-blue-500 flex items-center gap-2">
-            <Activity className="w-5 h-5" />
-            DIALER<span className="text-slate-500">OPS</span>
-          </div>
-          
-          <div className="h-6 w-px bg-slate-800" />
-          
-          <div className="flex items-center gap-2 text-sm font-mono">
-            <div className={`w-2 h-2 rounded-full ${agent ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-red-500'}`} />
-            <span className={agent ? 'text-emerald-500' : 'text-red-500'}>
-              {agent ? 'CONNECTED' : 'DISCONNECTED'}
-            </span>
-          </div>
+    <div className="terminal-screen h-screen bg-background text-foreground font-mono flex flex-col overflow-hidden select-none">
+      {/* ════ HEADER BAR ════ */}
+      <div
+        data-testid="header-bar"
+        className="flex items-center border-b border-border bg-[hsl(220,20%,6%)] shrink-0"
+        style={{ height: 28 }}
+      >
+        <div className="flex items-center gap-0 border-r border-border px-3 h-full">
+          <span className="text-emerald-400 font-bold text-[11px] tracking-widest">DIALER</span>
+          <span className="text-slate-500 font-bold text-[11px] tracking-widest ml-1">OPS</span>
+          <span className="text-slate-600 text-[10px] ml-2">v2.0</span>
         </div>
 
-        <div className="flex items-center gap-6 text-sm font-mono">
-          <div className="flex items-center gap-2">
-            <span className="text-slate-500">QUEUED</span>
-            <span className="text-slate-300 font-bold">142</span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <span className="text-slate-500">STATUS</span>
-            <Badge variant="outline" className={`
-              font-mono rounded-sm border
-              ${agent?.status === 'idle' ? 'bg-slate-800 text-slate-300 border-slate-700' : ''}
-              ${agent?.status === 'on_call' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : ''}
-              ${agent?.status === 'wrap_up' ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' : ''}
-              ${agent?.status === 'ringing' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : ''}
-            `}>
-              {agent?.status?.toUpperCase() || 'UNKNOWN'}
-            </Badge>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-slate-500">EXT</span>
-            <span className="text-slate-300">{agent?.extension || '---'}</span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <span className="text-slate-500">ID</span>
-            <span className="text-slate-300">{agent?.id || '-'}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link href="/manager" className="text-slate-500 hover:text-blue-400 flex items-center gap-1 transition-colors">
-              MGR <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
+        <div className="flex items-center gap-1 border-r border-border px-3 h-full">
+          <span className={`w-1.5 h-1.5 rounded-full ${agent ? "bg-emerald-400 status-pulse" : "bg-red-500"}`} />
+          <span className={`text-[10px] font-semibold ${agent ? "text-emerald-400" : "text-red-400"}`}>
+            {agent ? "CONNECTED" : "CONNECTING..."}
+          </span>
         </div>
-      </header>
 
+        <div className="flex items-center gap-1 border-r border-border px-3 h-full">
+          <span className="text-slate-600 text-[10px]">QUEUED</span>
+          <span className="text-slate-300 text-[10px] font-bold">–</span>
+        </div>
+
+        <div className="flex items-center gap-1 border-r border-border px-3 h-full">
+          <span className="text-slate-600 text-[10px]">STATUS</span>
+          <span
+            data-testid="agent-status"
+            className={`text-[10px] font-bold ${statusColor[status]}`}
+          >
+            {status.toUpperCase().replace("_", "-")}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1 border-r border-border px-3 h-full">
+          <span className="text-slate-600 text-[10px]">EXT</span>
+          <span className="text-slate-300 text-[10px]">{agent?.extension || "—"}</span>
+        </div>
+
+        <div className="flex items-center gap-1 border-r border-border px-3 h-full">
+          <span className="text-slate-600 text-[10px]">AGENT</span>
+          <span className="text-slate-300 text-[10px]">agent-{String(AGENT_ID).padStart(3, "0")}</span>
+        </div>
+
+        <div className="ml-auto flex items-center gap-1 border-l border-border px-3 h-full">
+          <span className="text-slate-500 text-[10px]">{format(time, "HH:mm:ss")}</span>
+        </div>
+
+        <Link
+          href="/manager"
+          className="flex items-center gap-1 border-l border-border px-3 h-full text-slate-500 hover:text-emerald-400 text-[10px] transition-colors"
+          data-testid="link-manager"
+        >
+          MGR VIEW
+        </Link>
+      </div>
+
+      {/* ════ MAIN BODY ════ */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Main Content Area */}
-        <div className="flex-1 flex p-4 gap-4 overflow-hidden">
-          
-          {/* Left Column: Lead Info */}
-          <div className="w-[40%] flex flex-col">
-            <Card className="bg-[#151822] border-slate-800 h-full flex flex-col rounded-md shadow-lg shadow-black/20">
-              <CardHeader className="pb-3 border-b border-slate-800 shrink-0">
-                <CardTitle className="text-xs font-mono font-medium text-slate-500 flex items-center gap-2 tracking-wider">
-                  <User className="w-4 h-4" /> 
-                  ACTIVE LEAD PROFILE
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 overflow-auto p-0">
-                {isLoadingLead ? (
-                  <div className="p-6 space-y-6">
-                    <Skeleton className="h-8 w-3/4 bg-slate-800" />
-                    <Skeleton className="h-4 w-1/2 bg-slate-800" />
-                    <Skeleton className="h-4 w-2/3 bg-slate-800" />
-                  </div>
-                ) : !lead ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4">
-                    <AlertCircle className="w-12 h-12 opacity-50" />
-                    <p className="font-mono text-sm">NO LEAD ASSIGNED</p>
-                    <Button 
-                      variant="outline" 
-                      className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
-                      onClick={() => assignNextLead.mutate({ id: AGENT_ID })}
-                      disabled={assignNextLead.isPending}
-                    >
-                      REQUEST NEXT LEAD
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="p-6 space-y-8">
-                    <div>
-                      <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">
-                        {lead.firstName} {lead.lastName}
-                      </h2>
-                      <div className="flex items-center gap-2 text-blue-400 font-mono text-lg bg-blue-500/10 w-fit px-3 py-1 rounded border border-blue-500/20">
-                        <Phone className="w-4 h-4" />
-                        {lead.phone}
-                      </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 gap-6">
-                      <div className="space-y-4">
-                        <h3 className="text-xs font-mono text-slate-500 uppercase tracking-wider border-b border-slate-800 pb-2">Primary Details</h3>
-                        
-                        <div className="grid gap-3">
-                          <div className="flex justify-between items-center group">
-                            <span className="text-sm text-slate-500 flex items-center gap-2"><Mail className="w-4 h-4" /> Email</span>
-                            <span className="text-sm text-slate-300 font-medium group-hover:text-white transition-colors">{lead.email || '—'}</span>
-                          </div>
-                          <div className="flex justify-between items-center group">
-                            <span className="text-sm text-slate-500 flex items-center gap-2"><Building2 className="w-4 h-4" /> Business</span>
-                            <span className="text-sm text-slate-300 font-medium group-hover:text-white transition-colors">{lead.business || '—'}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <h3 className="text-xs font-mono text-slate-500 uppercase tracking-wider border-b border-slate-800 pb-2">Location</h3>
-                        
-                        <div className="grid gap-3">
-                          <div className="flex justify-between items-center group">
-                            <span className="text-sm text-slate-500 flex items-center gap-2"><MapPin className="w-4 h-4" /> Address</span>
-                            <span className="text-sm text-slate-300 font-medium group-hover:text-white transition-colors text-right">
-                              {lead.address}<br/>
-                              {lead.city && lead.state ? `${lead.city}, ${lead.state} ${lead.zip || ''}` : '—'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <h3 className="text-xs font-mono text-slate-500 uppercase tracking-wider border-b border-slate-800 pb-2">System</h3>
-                        
-                        <div className="grid gap-3">
-                          <div className="flex justify-between items-center group">
-                            <span className="text-sm text-slate-500 flex items-center gap-2"><Hash className="w-4 h-4" /> Lead ID</span>
-                            <span className="text-sm text-slate-300 font-mono group-hover:text-white transition-colors">{lead.id}</span>
-                          </div>
-                          <div className="flex justify-between items-center group">
-                            <span className="text-sm text-slate-500 flex items-center gap-2"><Activity className="w-4 h-4" /> Status</span>
-                            <Badge variant="outline" className="border-slate-700 text-slate-400 bg-slate-800/50 uppercase font-mono text-[10px]">
-                              {lead.status}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+        {/* ── LEFT: CUSTOMER PANEL ── */}
+        <div
+          className="flex flex-col border-r border-border"
+          style={{ width: 230 }}
+        >
+          <div className="panel-header">
+            <span className="text-emerald-400">◄</span>
+            <span>CUSTOMER</span>
+            {lead && (
+              <span className="ml-auto text-[9px] px-1 border border-emerald-400/40 text-emerald-400">ACTIVE</span>
+            )}
           </div>
 
-          {/* Center Column: Tabbed Content (Stacked) */}
-          <div className="w-[60%] flex flex-col gap-4">
-            {/* Notes Panel */}
-            <Card className="bg-[#151822] border-slate-800 flex-1 flex flex-col min-h-[300px] rounded-md shadow-lg shadow-black/20">
-              <CardHeader className="pb-3 border-b border-slate-800 py-3 px-4 shrink-0">
-                <CardTitle className="text-xs font-mono font-medium text-slate-500">NOTES</CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
-                <div className="flex-1 overflow-auto p-4 space-y-4">
-                  {isLoadingNotes ? (
-                    <Skeleton className="h-16 w-full bg-slate-800" />
-                  ) : notes?.length === 0 ? (
-                    <div className="text-sm text-slate-600 font-mono italic text-center py-4">No notes found</div>
-                  ) : (
-                    notes?.map(note => (
-                      <div key={note.id} className="bg-slate-900/50 p-3 rounded border border-slate-800 text-sm">
-                        <div className="flex justify-between items-center mb-1 text-xs font-mono text-slate-500">
-                          <span>{note.agentName || `Agent ${note.agentId}`}</span>
-                          <span>{format(new Date(note.createdAt), 'MMM d, HH:mm')}</span>
-                        </div>
-                        <p className="text-slate-300">{note.content}</p>
-                      </div>
-                    ))
-                  )}
+          {!lead ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 p-4">
+              <span className="text-slate-600 text-[11px] text-center">NO LEAD ASSIGNED</span>
+              <button
+                data-testid="btn-request-lead"
+                onClick={doNextLead}
+                className="text-[10px] border border-emerald-400/40 text-emerald-400 px-3 py-1 hover:bg-emerald-400/10 transition-colors"
+              >
+                [N] REQUEST LEAD
+              </button>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-auto p-3 space-y-3">
+              {/* Name */}
+              <div>
+                <div className="text-[10px] text-slate-600 mb-0.5">NAME</div>
+                <div
+                  data-testid="lead-name"
+                  className="text-emerald-300 font-semibold text-[13px] leading-tight"
+                >
+                  {lead.firstName} {lead.lastName}
                 </div>
-                
-                <div className="p-4 border-t border-slate-800 bg-slate-900/30 shrink-0">
-                  <Form {...noteForm}>
-                    <form onSubmit={noteForm.handleSubmit(onSubmitNote)} className="flex gap-2">
-                      <FormField
-                        control={noteForm.control}
-                        name="content"
-                        render={({ field }) => (
-                          <FormItem className="flex-1">
-                            <FormControl>
-                              <Input 
-                                placeholder="Type a note..." 
-                                className="bg-[#0f111a] border-slate-700 text-white placeholder:text-slate-600 focus-visible:ring-blue-500" 
-                                disabled={!lead}
-                                {...field} 
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      <Button 
-                        type="submit" 
-                        size="icon" 
-                        className="bg-blue-600 hover:bg-blue-500 text-white shrink-0"
-                        disabled={!lead || addNote.isPending}
-                      >
-                        <Save className="w-4 h-4" />
-                      </Button>
-                    </form>
-                  </Form>
+              </div>
+
+              {/* Phone */}
+              <div>
+                <div className="text-[10px] text-slate-600 mb-0.5">PHONE</div>
+                <div
+                  data-testid="lead-phone"
+                  className="text-white font-bold text-[13px]"
+                >
+                  {lead.phone}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
 
-            {/* Call History Panel */}
-            <Card className="bg-[#151822] border-slate-800 flex-1 flex flex-col min-h-[250px] rounded-md shadow-lg shadow-black/20">
-              <CardHeader className="pb-3 border-b border-slate-800 py-3 px-4 shrink-0">
-                <CardTitle className="text-xs font-mono font-medium text-slate-500">CALL HISTORY</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 overflow-auto flex-1">
-                <Table>
-                  <TableHeader className="bg-slate-900/50 sticky top-0">
-                    <TableRow className="border-slate-800 hover:bg-transparent">
-                      <TableHead className="font-mono text-xs text-slate-500 h-8">DATE</TableHead>
-                      <TableHead className="font-mono text-xs text-slate-500 h-8">DURATION</TableHead>
-                      <TableHead className="font-mono text-xs text-slate-500 h-8">RESULT</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {isLoadingHistory ? (
-                      <TableRow className="border-slate-800">
-                        <TableCell><Skeleton className="h-4 w-20 bg-slate-800" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-12 bg-slate-800" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24 bg-slate-800" /></TableCell>
-                      </TableRow>
-                    ) : callHistory?.length === 0 ? (
-                      <TableRow className="border-slate-800">
-                        <TableCell colSpan={3} className="text-center text-slate-600 py-4 font-mono text-sm italic">
-                          No previous calls
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      callHistory?.map(call => (
-                        <TableRow key={call.id} className="border-slate-800 hover:bg-slate-800/30">
-                          <TableCell className="text-slate-300 text-sm py-2">
-                            {format(new Date(call.createdAt), 'MMM d, HH:mm')}
-                          </TableCell>
-                          <TableCell className="text-slate-400 font-mono text-sm py-2">
-                            {call.duration ? `${call.duration}s` : '—'}
-                          </TableCell>
-                          <TableCell className="py-2">
-                            <Badge variant="outline" className="border-slate-700 bg-slate-900 text-slate-300 font-mono text-[10px] uppercase">
-                              {call.result || 'INCOMPLETE'}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+              <div className="border-t border-border pt-2 space-y-2">
+                {[
+                  { label: "EMAIL",    value: lead.email },
+                  { label: "BUSINESS", value: lead.business },
+                  { label: "ADDRESS",  value: lead.address },
+                  {
+                    label: "LOCATION",
+                    value: lead.city && lead.state
+                      ? `${lead.city}, ${lead.state} ${lead.zip || ""}`.trim()
+                      : null,
+                  },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <div className="text-[9px] text-slate-600">{label}</div>
+                    <div className="text-[11px] text-slate-300 leading-snug">{value || "—"}</div>
+                  </div>
+                ))}
+              </div>
 
-            {/* Future Panel */}
-            <Card className="bg-[#151822] border-slate-800 flex-1 min-h-[150px] flex items-center justify-center rounded-md shadow-lg shadow-black/20 border-dashed">
-               <div className="text-center text-slate-600">
-                 <KeyRound className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                 <p className="font-mono text-xs uppercase tracking-widest">Additional features coming soon</p>
-               </div>
-            </Card>
-          </div>
+              <div className="border-t border-border pt-2">
+                <div className="text-[9px] text-slate-600">STATUS</div>
+                <div className={`text-[11px] font-bold ${statusColor[lead.status as string] || "text-slate-400"}`}>
+                  {lead.status.toUpperCase().replace("_", " ")}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[9px] text-slate-600">LEAD ID</div>
+                <div className="text-[11px] text-slate-500">#{lead.id}</div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Right Sidebar: Call State Panel */}
-        <div className="w-[300px] border-l border-slate-800 bg-[#12141c] shrink-0 flex flex-col p-4">
-          
-          <div className="mb-6 space-y-2">
-            <h2 className="text-xs font-mono font-bold text-slate-500 uppercase tracking-widest">Control Panel</h2>
-            <div className={`
-              h-24 rounded flex items-center justify-center border
-              ${agent?.status === 'idle' ? 'bg-slate-800/50 border-slate-700 text-slate-400' : ''}
-              ${agent?.status === 'ringing' ? 'bg-amber-500/10 border-amber-500/50 text-amber-500 animate-pulse' : ''}
-              ${agent?.status === 'on_call' ? 'bg-blue-500/10 border-blue-500/50 text-blue-500' : ''}
-              ${agent?.status === 'wrap_up' ? 'bg-purple-500/10 border-purple-500/50 text-purple-400' : ''}
-            `}>
-              <div className="text-center">
-                <p className="font-mono text-sm font-bold uppercase tracking-widest mb-1">
-                  {agent?.status === 'on_call' ? 'LIVE CALL' : 
-                   agent?.status === 'wrap_up' ? 'WRAP UP' : 
-                   agent?.status || 'UNKNOWN'}
-                </p>
-                {agent?.status === 'on_call' && (
-                  <p className="font-mono text-2xl font-bold tracking-tight">
-                    {formatDuration(callDuration)}
-                  </p>
+        {/* ── CENTER: NOTES / HISTORY / BLANK ── */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+
+          {/* Status bar below header */}
+          <div
+            className="flex items-center gap-2 border-b border-border px-3"
+            style={{ height: 22, background: "hsl(220,20%,6%)" }}
+          >
+            <span className="text-[9px] text-slate-600">SYS:</span>
+            <span
+              data-testid="status-message"
+              className={`text-[10px] font-semibold ${
+                statusMsg.includes("ERROR") ? "text-red-400" :
+                statusMsg.includes("HOT") ? "text-emerald-400" :
+                "text-slate-400"
+              }`}
+            >
+              {statusMsg}
+            </span>
+            {status === "on_call" && (
+              <span className="ml-auto text-blue-400 font-bold text-[11px] tracking-widest">
+                {fmt(callDuration)}
+              </span>
+            )}
+          </div>
+
+          {/* Three-column bottom panels */}
+          <div className="flex flex-1 overflow-hidden">
+
+            {/* NOTES */}
+            <div className="flex flex-col border-r border-border" style={{ flex: 2 }}>
+              <div className="panel-header">
+                <span className="text-blue-400">◄</span>
+                <span>NOTES</span>
+                <span className="ml-auto text-slate-600 text-[9px]">
+                  {notes?.length ?? 0} entries
+                </span>
+              </div>
+
+              <div className="flex-1 overflow-auto p-2 space-y-2">
+                {!lead ? (
+                  <div className="text-slate-700 text-[10px] italic pt-4 text-center">— no lead selected —</div>
+                ) : !notes?.length ? (
+                  <div className="text-slate-700 text-[10px] italic pt-4 text-center">— no notes —</div>
+                ) : (
+                  notes.map(note => (
+                    <div
+                      key={note.id}
+                      className="border border-border p-2"
+                    >
+                      <div className="flex justify-between text-[9px] text-slate-600 mb-1">
+                        <span>{note.agentName || `AGENT-${note.agentId}`}</span>
+                        <span>{format(new Date(note.createdAt), "MMM d HH:mm")}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-300">{note.content}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Note input */}
+              <div className="border-t border-border p-2">
+                <div className="text-[9px] text-slate-600 mb-1">
+                  ADD NOTE {noteInputFocused ? "— ENTER to save · ESC to cancel" : "— press / to focus"}
+                </div>
+                <textarea
+                  ref={noteRef}
+                  data-testid="input-note"
+                  value={noteText}
+                  onChange={e => setNoteText(e.target.value)}
+                  onFocus={() => setNoteInputFocused(true)}
+                  onBlur={() => setNoteInputFocused(false)}
+                  onKeyDown={e => {
+                    if (e.key === "/") {
+                      /* handled globally */
+                    }
+                  }}
+                  disabled={!lead}
+                  rows={2}
+                  placeholder="Type note then press ENTER..."
+                  className="w-full bg-[hsl(220,18%,7%)] border border-border text-[11px] text-slate-300 placeholder-slate-700 p-1.5 resize-none focus:outline-none focus:border-blue-400/60"
+                />
+              </div>
+            </div>
+
+            {/* CALL HISTORY */}
+            <div className="flex flex-col border-r border-border" style={{ flex: 2 }}>
+              <div className="panel-header">
+                <span className="text-yellow-400">◄</span>
+                <span>CALL HISTORY</span>
+                <span className="ml-auto text-slate-600 text-[9px]">
+                  {callHistory?.length ?? 0} calls
+                </span>
+              </div>
+
+              <div className="flex-1 overflow-auto">
+                {!lead ? (
+                  <div className="text-slate-700 text-[10px] italic pt-4 text-center">— no lead selected —</div>
+                ) : !callHistory?.length ? (
+                  <div className="text-slate-700 text-[10px] italic pt-4 text-center">— no previous calls —</div>
+                ) : (
+                  <table className="w-full text-[10px]">
+                    <thead>
+                      <tr className="border-b border-border text-slate-600">
+                        <th className="text-left px-2 py-1 font-normal">DATE</th>
+                        <th className="text-left px-2 py-1 font-normal">DUR</th>
+                        <th className="text-left px-2 py-1 font-normal">RESULT</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {callHistory.map(call => (
+                        <tr key={call.id} className="border-b border-border/50 hover:bg-white/[0.02]">
+                          <td className="px-2 py-1.5 text-slate-400">
+                            {format(new Date(call.startTime), "MM/dd HH:mm")}
+                          </td>
+                          <td className="px-2 py-1.5 text-slate-500">
+                            {call.duration ? `${call.duration}s` : "—"}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <span className={`text-[9px] font-bold ${
+                              call.result === "hot_lead"       ? "text-emerald-400" :
+                              call.result === "no_answer"      ? "text-slate-500" :
+                              call.result === "busy"           ? "text-yellow-400" :
+                              call.result === "callback"       ? "text-blue-400" :
+                              call.result === "not_interested" ? "text-red-400" :
+                              "text-slate-500"
+                            }`}>
+                              {(call.result || "—").toUpperCase().replace("_", " ")}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
               </div>
             </div>
+
+            {/* BLANK / FUTURE PANEL */}
+            <div className="flex flex-col" style={{ flex: 1 }}>
+              <div className="panel-header">
+                <span className="text-slate-600">◄</span>
+                <span className="text-slate-600">MODULE</span>
+              </div>
+              <div className="flex-1 flex items-center justify-center">
+                <span className="text-slate-800 text-[10px] text-center leading-relaxed">
+                  FUTURE<br/>MODULE
+                </span>
+              </div>
+            </div>
+
           </div>
-
-          {!isCallActive && !needsDisposition && (
-            <Button 
-              className="w-full h-16 text-lg font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)] transition-all rounded-md"
-              onClick={handleCall}
-              disabled={!lead || agent?.status !== 'idle'}
-              data-testid="button-call-now"
-            >
-              <PhoneCall className="w-5 h-5 mr-2" />
-              CALL NOW
-            </Button>
-          )}
-
-          {isCallActive && (
-            <Button 
-              variant="destructive"
-              className="w-full h-16 text-lg font-bold bg-red-600 hover:bg-red-500 shadow-[0_0_15px_rgba(220,38,38,0.3)] rounded-md"
-              onClick={handleHangup}
-              data-testid="button-hangup"
-            >
-              <PhoneOff className="w-5 h-5 mr-2" />
-              HANGUP
-            </Button>
-          )}
-
-          {needsDisposition && (
-            <Card className="bg-[#151822] border-purple-500/30 border shadow-[0_0_15px_rgba(168,85,247,0.1)]">
-              <CardHeader className="py-3 px-4 border-b border-slate-800">
-                <CardTitle className="text-xs font-mono text-purple-400 uppercase tracking-widest">Disposition Required</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4">
-                <Form {...dispositionForm}>
-                  <form onSubmit={dispositionForm.handleSubmit(onSubmitDisposition)} className="space-y-4">
-                    <FormField
-                      control={dispositionForm.control}
-                      name="disposition"
-                      render={({ field }) => (
-                        <FormItem>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                              <SelectTrigger className="bg-[#0f111a] border-slate-700 text-white font-mono">
-                                <SelectValue placeholder="Select outcome..." />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="bg-[#151822] border-slate-700 text-slate-300">
-                              <SelectItem value="hot_lead">HOT LEAD</SelectItem>
-                              <SelectItem value="closed">CLOSED</SelectItem>
-                              <SelectItem value="callback">CALLBACK</SelectItem>
-                              <SelectItem value="not_interested">NOT INTERESTED</SelectItem>
-                              <SelectItem value="no_answer">NO ANSWER</SelectItem>
-                              <SelectItem value="busy">BUSY</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={dispositionForm.control}
-                      name="notes"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormControl>
-                            <Textarea 
-                              placeholder="Wrap-up notes..." 
-                              className="min-h-[80px] resize-none bg-[#0f111a] border-slate-700 text-white placeholder:text-slate-600 font-mono text-sm"
-                              {...field}
-                            />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-
-                    <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-500 font-bold tracking-wide" disabled={setDisposition.isPending}>
-                      SUBMIT & NEXT
-                    </Button>
-                  </form>
-                </Form>
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="mt-auto">
-            <h3 className="text-[10px] font-mono text-slate-600 uppercase tracking-widest mb-3 pb-2 border-b border-slate-800">Hotkeys</h3>
-            <ul className="space-y-2">
-              {[
-                { label: 'CALL NEXT', key: 'Enter' },
-                { label: 'HANGUP', key: 'Esc' },
-                { label: 'DISPOSITION', key: 'D' },
-                { label: 'ADD NOTE', key: 'N' },
-              ].map(hotkey => (
-                <li key={hotkey.key} className="flex justify-between items-center text-xs">
-                  <span className="text-slate-500 font-medium">{hotkey.label}</span>
-                  <kbd className="px-2 py-1 bg-slate-800 border border-slate-700 rounded text-slate-400 font-mono text-[10px] shadow-sm">
-                    {hotkey.key}
-                  </kbd>
-                </li>
-              ))}
-            </ul>
-          </div>
-
         </div>
+
+        {/* ── RIGHT: CALL STATE PANEL ── */}
+        <div
+          className="flex flex-col border-l border-border shrink-0"
+          style={{ width: 190 }}
+        >
+          {/* Call state display */}
+          <div className="panel-header">
+            <span className="text-slate-500">CALL STATE</span>
+          </div>
+
+          <div
+            className={`mx-2 mt-2 p-3 border flex flex-col items-center justify-center gap-1 ${
+              status === "idle"    ? "border-emerald-400/30 bg-emerald-400/5" :
+              status === "ringing" ? "border-yellow-400/40 bg-yellow-400/5 animate-pulse" :
+              status === "on_call" ? "border-blue-400/40 bg-blue-400/5" :
+              status === "wrap_up" ? "border-purple-400/40 bg-purple-400/5" :
+              status === "paused"  ? "border-orange-400/30 bg-orange-400/5" :
+              "border-border bg-muted/20"
+            }`}
+            style={{ minHeight: 64 }}
+          >
+            <div
+              data-testid="call-state-label"
+              className={`text-[11px] font-bold tracking-widest ${statusColor[status]}`}
+            >
+              {callStateLabel[status] || status.toUpperCase()}
+            </div>
+            {status === "on_call" && (
+              <div className="text-blue-300 font-bold text-[18px] tracking-widest font-mono">
+                {fmt(callDuration)}
+              </div>
+            )}
+            {status === "ringing" && (
+              <div className="flex gap-1 mt-1">
+                {[0,1,2].map(i => (
+                  <span
+                    key={i}
+                    className="w-1 h-1 rounded-full bg-yellow-400"
+                    style={{ animationDelay: `${i * 0.2}s` }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* OPTIONS */}
+          <div className="panel-header mt-2">
+            <span className="text-slate-500">OPTIONS</span>
+          </div>
+
+          <div className="px-2 py-1 space-y-0.5">
+            {status === "idle" && lead && (
+              <button
+                data-testid="btn-call-now"
+                onClick={doCall}
+                className="w-full flex items-center gap-2 text-[10px] text-emerald-400 hover:bg-emerald-400/10 px-1 py-1 transition-colors border border-emerald-400/20 hover:border-emerald-400/50"
+              >
+                <span className="key-badge active">C</span>
+                <span>Call Now</span>
+              </button>
+            )}
+            {status === "idle" && (
+              <button
+                data-testid="btn-next-lead"
+                onClick={doNextLead}
+                className="w-full flex items-center gap-2 text-[10px] text-slate-400 hover:bg-white/5 px-1 py-1 transition-colors"
+              >
+                <span className="key-badge">N</span>
+                <span>Next Lead</span>
+              </button>
+            )}
+            {(status === "on_call" || status === "ringing") && (
+              <button
+                data-testid="btn-hangup"
+                onClick={doHangup}
+                className="w-full flex items-center gap-2 text-[10px] text-red-400 hover:bg-red-400/10 px-1 py-1 transition-colors border border-red-400/20"
+              >
+                <span className="key-badge" style={{ borderColor: "rgb(248 113 113 / 0.5)", color: "rgb(248 113 113)" }}>H</span>
+                <span>Hang Up</span>
+              </button>
+            )}
+            {(status === "idle" || status === "paused") && (
+              <button
+                data-testid="btn-pause"
+                onClick={doPause}
+                className="w-full flex items-center gap-2 text-[10px] text-orange-400 hover:bg-orange-400/10 px-1 py-1 transition-colors"
+              >
+                <span className="key-badge">P</span>
+                <span>{status === "paused" ? "Resume" : "Pause"}</span>
+              </button>
+            )}
+          </div>
+
+          {/* DISPOSITION — shown in wrap-up */}
+          {status === "wrap_up" && (
+            <>
+              <div className="panel-header mt-2">
+                <span className="text-purple-400">DISPOSITION</span>
+              </div>
+              <div className="px-2 py-1 space-y-0.5">
+                {DISPOSITIONS.map(d => (
+                  <button
+                    key={d.key}
+                    data-testid={`btn-disp-${d.code}`}
+                    onClick={() => doDisposition(d.code)}
+                    className={`w-full flex items-center gap-2 text-[10px] px-1 py-1 transition-colors hover:bg-white/5 ${
+                      selectedDisp === d.code ? "bg-white/10" : ""
+                    } ${d.color}`}
+                  >
+                    <span className="key-badge">{d.key}</span>
+                    <span>{d.label}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* HOTKEYS reference */}
+          <div className="panel-header mt-auto">
+            <span className="text-slate-500">HOTKEYS</span>
+          </div>
+
+          <div className="px-2 py-1 space-y-0.5 text-[9px] text-slate-600">
+            <div className="flex justify-between">
+              <span><span className="key-badge mr-1">C</span> Call</span>
+              <span><span className="key-badge mr-1">H</span> Hangup</span>
+            </div>
+            <div className="flex justify-between">
+              <span><span className="key-badge mr-1">W</span> Wrap</span>
+              <span><span className="key-badge mr-1">P</span> Pause</span>
+            </div>
+            <div className="flex justify-between">
+              <span><span className="key-badge mr-1">N</span> Next</span>
+              <span><span className="key-badge mr-1">T</span> MGR</span>
+            </div>
+            <div className="border-t border-border/50 pt-1 mt-1">
+              {DISPOSITIONS.map(d => (
+                <div key={d.key} className={`flex items-center gap-1.5 ${d.color}`}>
+                  <span className="key-badge">{d.key}</span>
+                  <span>{d.label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-border/50 pt-1 mt-1 text-slate-700">
+              / = focus note
+            </div>
+          </div>
+
+          {/* Note input shortcut info */}
+          <div className="border-t border-border" />
+          <div className="px-2 py-1">
+            <Link
+              href="/manager"
+              className="text-[9px] text-slate-600 hover:text-emerald-400 transition-colors block text-center"
+            >
+              → MANAGER VIEW
+            </Link>
+          </div>
+        </div>
+
       </div>
     </div>
   );
